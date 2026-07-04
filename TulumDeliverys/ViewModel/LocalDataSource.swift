@@ -17,7 +17,6 @@ protocol DataManagerProtocol: Sendable {
 // 1. The Actor enforces thread safety (Background work)
 @ModelActor
 actor DataManager: DataManagerProtocol {
-    
     // The macro AUTOMATICALLY adds:
         // var modelContainer: ModelContainer
         // var modelExecutor: ModelExecutor

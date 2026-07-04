@@ -19,6 +19,9 @@ struct ViewFactory {
             case .map:
                 MapView()
                     .navigationBarBackButtonHidden(true)
+            case .payment:
+                PaymentView()
+                    .navigationBarBackButtonHidden(true)
             case .rate:
                 RateView() ///NEW VIEW FOR SERVER DRIVER COMPONENTS
                     .navigationBarBackButtonHidden(true)

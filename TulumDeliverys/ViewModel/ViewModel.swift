@@ -23,6 +23,7 @@ final class MyViewModel: ObservableObject {
     @Published var deliveryId = ""
     @Published private(set) var isLoading = false
     @Published var image: UIImage?
+    @Published var menuItems: [Item] = []
     private let cache = ImageDownloader()
     private(set) var deleteAll = false
     private(set) var isDelivery = false
@@ -192,28 +193,28 @@ final class MyViewModel: ObservableObject {
         }
     }
 
+    //MULTIPLE TASKS
     func fetchMoreData() async throws {
         isLoading = true
-       // defer { isLoading = false }
+        defer { isLoading = false }
         // 1. "async let" starts the tasks IMMEDIATELY in the background.
         // They are now running in parallel on available threads.
-       // async let photosTask = repository.fetchPhotos()
-       // async let videosTask = repository.fetchVideos()
-        
+        //async let photosTask = repository.fetchPhotos()
+        //async let videosTask = repository.fetchVideos()
         // ... You could do other work here while they download ...
         // 2. The Suspension Point
         // We pause here until BOTH tasks are finished.
-        // If either one throws an error, the other is automatically cancelled (Structured Concurrency).
-     //   let (newPhotos, newVideos) = try await (photosTask, videosTask)
-        
+        // If either one throws an error, the other is automatically cancelled
+        //(Structured Concurrency).
+        //let (newPhotos, newVideos) = try await (photosTask, videosTask)
         // 3. Atomic Update
         // We only update the UI state once both have succeeded.
-       // self.photos = newPhotos
+        //self.photos = newPhotos
         //self.videos = newVideos
     }
     
+    //SAFE TASK GROUP
     func fetchImagesSafely(urls: [URL]) async -> [UIImage] {
-        
         // 1. Use a TaskGroup (Standard, not Throwing)
         // We handle errors INSIDE, so the group itself never fails.
         return await withTaskGroup(of: UIImage?.self) { group in
@@ -235,7 +236,6 @@ final class MyViewModel: ObservableObject {
                     }
                 }
             }
-            
             // 3. Filter out failures
             // The loop quietly ignores the nils and collects the successes.
             for await result in group {
@@ -243,8 +243,51 @@ final class MyViewModel: ObservableObject {
                     images.append(validImage)
                 }
             }
-            
             return images
         }
+    }
+    
+    
+    //THROWING TASK GROUP
+    func fetchAllImages(urls: [URL]) async throws -> [UIImage] {
+        // 1. Create a "Task Group" scope
+        // The group manages the lifecycle of all child tasks.
+        // If one fails, the group can cancel the rest (Structured Concurrency).
+        return try await withThrowingTaskGroup(of: UIImage?.self) { group in
+            
+            var images: [UIImage] = []
+            images.reserveCapacity(urls.count) // Optimization: Avoid re-allocating memory
+            
+            // 2. Loop through the input array and spawn tasks
+            for url in urls {
+                group.addTask {
+                    // This code runs in parallel on background threads!
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    return UIImage(data: data)
+                }
+            }
+            // 3. Harvest the results as they finish
+            // Note: The loop runs as fast as the network returns.
+            // Crucial: The order is NOT guaranteed. The fastest request returns first.
+            for try await image in group {
+                if let validImage = image {
+                    images.append(validImage)
+                }
+            }
+            // 4. Return the aggregated result
+            return images
+        }
+    }
+    
+    //GraphQL
+   
+    func loadMenu() async {
+        isLoading = true
+        do {
+            self.menuItems = try await repository.getMenuItems()
+        } catch {
+            print("GraphQL Error: \(error.localizedDescription)")
+        }
+        isLoading = false
     }
 }

@@ -43,31 +43,20 @@ struct Item2: Codable, Identifiable { // Identifiable es bueno para SwiftUI
     var active:Bool?
 }
 
-struct User {
-    var userID:String
-    var name:String
-    var email:String
-    var lat:Double
-    var long:Double
+struct GraphQLResponse: Decodable {
+    let data: MenuData
 }
 
-struct Dish {
-    var dishId:Int
-    var restaurantId:String
-    var name:String
-    var price:Double
-    var imageUrl:String
+struct MenuData: Decodable {
+    let fetchMenuItems: [ItemDTO]
 }
 
-struct Basket {
-    var basketID:Int
-    var userID:Int
-}
-
-struct Order {
-    var orderID : Int
-    var status : String
-    var basket: Basket
-   // var curLoc: [curLat, curLong]
+struct ItemDTO: Decodable {
+    let id: String
+    let name: String
+    let image: String
+    let price: Int
+    let category: String
+    let active: Bool
 }
 

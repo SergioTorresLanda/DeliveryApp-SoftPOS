@@ -107,7 +107,7 @@ struct MapView: View {
                 }
                 if !viewmodel.isDelivery {
                 VStack{
-                    Button {
+                    /*Button {
                         pMethod="Cash"
                         openSomeUrl(s: "https://api.whatsapp.com/send?phone=525621001774&text=Hi.%20My%20order%20Id%20is:%20"+viewmodel.deliveryId+"%20I%20would%20like%20to%20pay%20with%20"+pMethod)
                         viewmodel.setDelivery()
@@ -117,19 +117,19 @@ struct MapView: View {
                             .foregroundStyle(.yellow)
                             .background(.black)
                             .cornerRadius(20)
-                    }
+                    }*/
                     Button {
                         pMethod="CreditCard"
-                        openSomeUrl(s: "https://api.whatsapp.com/send?phone=525621001774&text=Hi.%20My%20order%20Id%20is:%20"+viewmodel.deliveryId+"%20I%20would%20like%20to%20pay%20with%20"+pMethod)
+                        coordinator.push(.payment)
                         viewmodel.setDelivery()
                     } label: {
-                        Label("Credit Card (Visa/MasterCard/Amex)", systemImage: "creditcard.viewfinder")
+                        Label("EVM (SoftPOS)", systemImage: "iphone.gen2.radiowaves.left.and.right")//"creditcard.viewfinder")
                             .padding()
                             .foregroundStyle(.yellow)
                             .background(.black)
                             .cornerRadius(20)
                     }
-                    Button {
+                   /* Button {
                         pMethod="WireTransfer"
                         openSomeUrl(s: "https://api.whatsapp.com/send?phone=525621001774&text=Hi.%20My%20order%20Id%20is:%20"+viewmodel.deliveryId+"%20I%20would%20like%20to%20pay%20with%20"+pMethod)
                         viewmodel.setDelivery()
@@ -139,13 +139,13 @@ struct MapView: View {
                             .foregroundStyle(.yellow)
                             .background(.black)
                             .cornerRadius(20)
-                    }
+                    }*/
                     Button {
                         pMethod="Crypto"
                         openSomeUrl(s: "https://api.whatsapp.com/send?phone=525621001774&text=Hi.%20My%20order%20Id%20is:%20"+viewmodel.deliveryId+"%20I%20would%20like%20to%20pay%20with%20"+pMethod)
                         viewmodel.setDelivery()
                     } label: {
-                        Label("Crypto (BTC/USDT)", systemImage: "bitcoinsign.arrow.circlepath")
+                        Label("Crypto (BCH/USDT)", systemImage: "bitcoinsign.arrow.circlepath")
                             .padding()
                             .foregroundStyle(.yellow)
                             .background(.black)

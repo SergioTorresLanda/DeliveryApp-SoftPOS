@@ -11,6 +11,7 @@ enum AppRoute: Hashable {
     case cart
     case map
     case rate
+    case payment
     case productDetails(id: String) // Passing data strictly via the route
     case sduiScreen(id: String)     // Backend-driven fallback
 }
