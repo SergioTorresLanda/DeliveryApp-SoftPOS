@@ -1,17 +1,13 @@
 # DeliveryApp with SoftPOS integration
 
-https://img.shields.io/badge/Swift-6.0-orange.svg
-https://img.shields.io/badge/iOS-16.0+-blue.svg
-https://img.shields.io/badge/SPM-compatible-brightgreen.svg
-https://img.shields.io/badge/License-Proprietary-red.svg
 
 A production-ready delivery application featuring enterprise-grade SoftPOS (tap-to-phone) payment technology and Apple TSM-as-a-Service integration.
 
-📲 Download on the App Store
+📲 Download on the App Store: 
 https://apps.apple.com/us/app/tulumdeliverys/id6747213576?l=pt-BR
 
 ## 📱 Overview
-DeliveryApp is a full-featured delivery platform that transforms any NFC-enabled iOS device into a secure payment terminal. Built for enterprise merchants, this app enables contactless payment acceptance directly on the iPhone, eliminating the need for external card readers.
+DeliveryApp-SoftPOS is a full-featured delivery platform that transforms any NFC-enabled iOS device into a secure payment terminal. Built for enterprise merchants, this app enables contactless payment acceptance directly on the iPhone, eliminating the need for external card readers.
 
 ## Key Capabilities
 
