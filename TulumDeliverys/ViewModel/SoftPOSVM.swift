@@ -21,6 +21,9 @@ final class SoftPOSVM {
     private(set) var isDeclined: Bool = false
     private(set) var showError: Bool = false
     private(set) var errorMessage: String = ""
+    //Sec Apple TSM
+    private(set) var tsmStatus = "TSM: Not Started"
+    private(set) var isProvisioning = false
     
     // MARK: - State Observation
     private var stateObservationTask: Task<Void, Never>?
@@ -93,6 +96,37 @@ final class SoftPOSVM {
        showError = false
        errorMessage = ""
    }
+    
+    func performTSMProvisioning() async {
+         isProvisioning = true
+         tsmStatus = "⏳ Starting TSM flow..."
+         
+         let tsm = TSMProvisioningService.shared
+         
+         guard tsm.isSupported else {
+             tsmStatus = "❌ AppAttest not supported on this device."
+             isProvisioning = false
+             return
+         }
+         
+         do {
+             // 1. Check if we have a key, generate if needed
+             tsmStatus = "🔑 Generating attestation key..."
+             let keyId = try await tsm.getOrCreateAttestationKey()
+             print("Key ID: \(keyId)")
+             // 2. Perform the full provisioning flow
+             tsmStatus = "🔒 Attesting with backend challenge..."
+             let token = try await tsm.performFullProvisioningFlow()
+             
+             tsmStatus = "✅ Provisioning successful!\nToken: \(token.prefix(16))..."
+             // Optional: Present Apple's Wallet UI in production
+             // let addPassVC = PKAddPaymentPassViewController(...)
+         } catch {
+             tsmStatus = "❌ TSM Error: \(error.localizedDescription)"
+         }
+         
+         isProvisioning = false
+     }
     
 }
 

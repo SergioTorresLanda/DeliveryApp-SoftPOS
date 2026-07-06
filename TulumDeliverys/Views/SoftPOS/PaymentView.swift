@@ -5,7 +5,7 @@ import SwiftUI
 
 struct PaymentView: View {
     
-    private let vm = SoftPOSVM()
+    @State private var vm = SoftPOSVM()
     
     var body: some View {
         VStack(spacing: 30) {
@@ -81,16 +81,43 @@ struct PaymentView: View {
             }
             
             Spacer()
+            Divider().padding(.vertical, 8)
+           // TSM / Provisioning Section
+           VStack(spacing: 12) {
+               Text("Apple TSM / Wallet Provisioning")
+                   .font(.headline)
+               
+               Text(vm.tsmStatus)
+                   .font(.caption)
+                   .multilineTextAlignment(.center)
+                   .padding(8)
+                   .background(Color(.secondarySystemBackground))
+                   .cornerRadius(8)
+               
+               Button {
+                   Task { await vm.performTSMProvisioning() }
+               } label: {
+                   Label(vm.isProvisioning ? "Provisioning..." : "Test TSM Provisioning",
+                         systemImage: "wallet.pass")
+               }
+               .buttonStyle(.bordered)
+               .disabled(vm.isProvisioning)
+           }
+           .padding()
+           .background(Color(.tertiarySystemBackground))
+           .cornerRadius(12)
             
-            Text("Version 3.3.3 • SoftPOS + TSM")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
+        Text("Version 3.3.3 • SoftPOS + TSM")
+            .font(.caption)
+            .foregroundColor(.secondary)
+       }
         .padding()
         .animation(.easeInOut(duration: 0.25), value: vm.isProcessing)
         .animation(.easeInOut(duration: 0.25), value: vm.statusMessage)
+        .onAppear {
+           
+        }
     }
-    
 
 }
 

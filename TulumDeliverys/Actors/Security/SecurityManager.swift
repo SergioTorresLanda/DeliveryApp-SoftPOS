@@ -146,6 +146,18 @@ actor SecurityManager {
         return mockToken
     }
     
+    // MARK: - Legacy Secure Enclave Signature Methods (KEPT FOR P2PE SESSION KEY AGREEMENT)
+    //
+    // The methods below (loadOrCreateAttestationKey, createNewAttestationKey, generateAttestationProof)
+    // are intentionally kept as a custom cryptographic foundation.
+    //
+    // Purpose:
+    //   - Used for deriving P2PE session keys between the mobile app and the Cloud EMV Kernel.
+    //   - Provides a fallback or custom attestation mechanism independent of Apple's TSM.
+    //   - Demonstrates direct Secure Enclave access (kSecAttrTokenIDSecureEnclave) for low-level crypto.
+    //
+    // These are distinct from Apple's DCAppAttestService which provides
+    // Apple-signed certificates specifically required for Apple Wallet provisioning.
     // MARK: - Private Attestation Logic (TSM Simulation)
     
     private func loadOrCreateAttestationKey() {

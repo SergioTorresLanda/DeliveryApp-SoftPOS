@@ -312,11 +312,5 @@ actor NFCSessionManager: NFCSessionProtocol {
     }
 }
 
-// MARK: - Data Extensions
 
-extension Data {
-    var hexString: String {
-        return map { String(format: "%02X", $0) }.joined()
-    }
-}
 //This is the main workhorse. APDU sequence required to read a contactless EMV card.
