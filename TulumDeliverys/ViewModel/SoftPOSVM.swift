@@ -12,72 +12,88 @@ import SwiftUI
 final class SoftPOSVM {
     
     // MARK: - Dependencies
-    private let securityManager: SecurityManager
-    private let nfcManager: NFCSessionManager
+    private let orchestrator: TransactionOrchestrator
        
     // MARK: - UI State
     private(set) var statusMessage = "Ready to Tap"
     private(set) var isProcessing = false
+    private(set) var isApproved: Bool = false
+    private(set) var isDeclined: Bool = false
+    private(set) var showError: Bool = false
+    private(set) var errorMessage: String = ""
     
-    init(securityManager: SecurityManager, nfcManager: NFCSessionManager) {
-        //TODO: will change type to protocol & move to repository layer
-        self.securityManager = securityManager
-        self.nfcManager = nfcManager
+    // MARK: - State Observation
+    private var stateObservationTask: Task<Void, Never>?
+       
+    
+    init(orchestrator: TransactionOrchestrator = TransactionOrchestrator()) {
+        self.orchestrator = orchestrator
+        startObservingState()
     }
     
-    // MARK: - Full Payment Flow (Phase 1 + 2 Integrated)
-    func startPaymentFlow() async {
-        
-        guard !isProcessing else { return }
-        isProcessing = true
-        statusMessage = "📡 Hold your card near the top of the phone..."
-        
-        do {
-            // Step 1: Read the card via CoreNFC (Phase 2)
-            let cardData = try await nfcManager.readPaymentCard()
-            
-            // Step 2: Mask the PAN for UI safety
-            let maskedPan = String(cardData.pan.prefix(6)) + "******" + String(cardData.pan.suffix(4))
-            statusMessage = "💳 Card Read: \(maskedPan)\n⏳ Encrypting & Sending..."
-            
-            // Step 3: Build the P2PE Transaction Payload
-            let transaction = TransactionPayload(
-                transactionId: UUID().uuidString,
-                amount: "12.99",
-                currency: "USD",
-                pan: cardData.pan,
-                expiry: cardData.expiry,
-                cryptogram: cardData.cryptogram.hexString,
-                unpredictableNumber: cardData.unpredictableNumber.hexString,
-                aid: cardData.aid,
-                issuerAppData: cardData.issuerAppData.hexString
-            )
-            
-            // Step 4: Send through the Secure Transport Layer (Phase 1)
-            // This automatically attaches OAuth2, Certificate Pinning, and TSM Attestation.
-            let endpoint = "https://mock.paycloud.com/v1/softpos/process"
-            let responseData = try await securityManager.sendSecurePayload(transaction, to: endpoint)
-            
-            // Step 5: Parse the mock response
-            if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-               let status = json["status"] as? String {
-                if status == "APPROVED" {
-                    statusMessage = "✅ Transaction Approved!\nReference: \(json["reference"] ?? "N/A")"
-                } else {
-                    statusMessage = "❌ Transaction Declined: \(json["reason"] ?? "Unknown")"
+    deinit {
+        stateObservationTask?.cancel()
+    }
+    
+    // MARK: - Observing State Stream
+    private func startObservingState() {
+        stateObservationTask = Task { [weak self] in
+            for await state in await self?.orchestrator.stateStream() ?? AsyncStream { _ in } {
+                // Update UI state on the main actor (SwiftUI requires main thread)
+                await MainActor.run {
+                    self?.updateUI(for: state)
                 }
-            } else {
-                statusMessage = "✅ Transaction Complete (Mock)"
             }
-            
-        } catch NFCSessionManager.NFCError.userCancelled {
-            statusMessage = "❌ Cancelled by user."
-        } catch {
-            statusMessage = "❌ Error: \(error.localizedDescription)"
         }
-        
-        isProcessing = false
     }
+    
+    @MainActor
+    private func updateUI(for state: TransactionState) {
+        statusMessage = state.displayMessage
+        isProcessing = state.isProcessing
+        
+        switch state {
+        case .approved:
+            isApproved = true
+            isDeclined = false
+            showError = false
+        case .declined:
+            isApproved = false
+            isDeclined = true
+            showError = false
+        case .error(let msg):
+            isApproved = false
+            isDeclined = false
+            showError = true
+            errorMessage = msg
+        case .cancelled, .idle:
+            isApproved = false
+            isDeclined = false
+            showError = false
+        default:
+            // No terminal state change
+            break
+        }
+    }
+    
+    // MARK: - Full Payment Flow
+   func startPaymentFlow() {
+       Task {
+           await orchestrator.startTransaction()
+       }
+   }
+   
+   func resetPaymentFlow() {
+       Task {
+           await orchestrator.reset()
+       }
+       // Reset UI flags immediately (optimistic)
+       isApproved = false
+       isDeclined = false
+       showError = false
+       errorMessage = ""
+   }
+    
 }
 
 //The app prompts you to tap a card.

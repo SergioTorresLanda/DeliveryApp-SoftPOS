@@ -1,6 +1,7 @@
 //
 //  TransactionPayload.swift
 //
+import Foundation
 
 struct TransactionPayload: Codable {
     let transactionId: String
@@ -24,4 +25,16 @@ struct TransactionPayload: Codable {
         case aid
         case issuerAppData = "issuer_app_data"
     }
+}
+
+struct EMVCardData: Sendable {
+    let pan: String              // Masked for logging, full for transport
+    let expiry: String           // YYMM
+    let applicationLabel: String // e.g., "VISA CREDIT"
+    let aid: String              // Application ID (hex)
+    let afl: [UInt8]             // Application File Locator (for internal use)
+    let cdol1: Data              // Card Risk Management Data Object List
+    let cryptogram: Data         // 9F26 - Application Cryptogram (mock or real)
+    let unpredictableNumber: Data // 9F37 - The UDN we provided
+    let issuerAppData: Data      // 9F10 - Issuer Application Data (optional)
 }

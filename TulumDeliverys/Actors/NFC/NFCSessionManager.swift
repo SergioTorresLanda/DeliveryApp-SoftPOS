@@ -6,19 +6,16 @@ import Foundation
 import CoreNFC
 import CryptoKit
 
-/// The NFC Core Layer responsible for:
-/// 1. Polling for ISO-14443 Type A/B cards.
-/// 2. Exchanging APDUs (SELECT, GPO, READ RECORD).
-/// 3. Parsing TLV responses to extract EMV data.
-/// 4. Forwarding the raw cryptogram and PAN to the orchestration layer.
-actor NFCSessionManager: NSObject {
+/// The NFC Core Layer as a Swift 6 strict-concurrency-compliant actor.
+/// Uses a dedicated NSObject bridge to safely interface with CoreNFC hardware.
+actor NFCSessionManager: NFCSessionProtocol {
     
     // MARK: - Singleton
     static let shared = NFCSessionManager()
-    private override init() { super.init() }
+    private init() {}
     
     // MARK: - Public Types
-    enum NFCError: Error {
+    enum NFCError: Error, Sendable {
         case unsupportedTag
         case nfcUnavailable
         case apduFailed(sw1: UInt8, sw2: UInt8)
@@ -26,28 +23,27 @@ actor NFCSessionManager: NSObject {
         case userCancelled
         case sessionTimeout
         case invalidAPDU
+        case bridgeDeallocated
     }
     
     struct EMVCardData: Sendable {
-        let pan: String              // Masked for logging, full for transport
-        let expiry: String           // YYMM
-        let applicationLabel: String // e.g., "VISA CREDIT"
-        let aid: String              // Application ID (hex)
-        let afl: [UInt8]             // Application File Locator (for internal use)
-        let cdol1: Data              // Card Risk Management Data Object List
-        let cryptogram: Data         // 9F26 - Application Cryptogram (mock or real)
-        let unpredictableNumber: Data // 9F37 - The UDN we provided
-        let issuerAppData: Data      // 9F10 - Issuer Application Data (optional)
+        let pan: String
+        let expiry: String
+        let applicationLabel: String
+        let aid: String
+        let afl: [UInt8]
+        let cdol1: Data
+        let cryptogram: Data
+        let unpredictableNumber: Data
+        let issuerAppData: Data
     }
     
     // MARK: - Private State
     private var session: NFCTagReaderSession?
+    private var delegateBridge: NFCDelegateBridge?
     private var continuation: CheckedContinuation<EMVCardData, Error>?
     
     // MARK: - Public Interface
-    
-    /// Starts the NFC reader session and reads the payment card data.
-    /// Returns an `EMVCardData` containing all necessary tags for the Cloud Kernel.
     func readPaymentCard() async throws -> EMVCardData {
         guard NFCTagReaderSession.readingAvailable else {
             throw NFCError.nfcUnavailable
@@ -55,65 +51,57 @@ actor NFCSessionManager: NSObject {
         
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let session = NFCTagReaderSession(pollingOption: [.iso14443, .iso18092],
-                                              delegate: self)
-            self.session = session
-            session?.alertMessage = NSLocalizedString("Hold your card near the phone to pay.", comment: "")
-            session?.begin()
-        }
-    }
-    //iso14443: Detects ISO 7816-compatible tags, including MIFARE tags (e.g., MIFARE Ultralight, Classic, DESFire).
-    //iso15693: Detects ISO 15693 tags (commonly used for access control, inventory, and smart posters).
-    //iso18092: Detects FeliCa tags (popular in Japan, often used in transit cards like Suica, or loyalty systems).
-    //pace: Detects tags using Password Authenticated Connection Establishment (often required for secure electronic passport reading/ePassports)
-    
-    // MARK: - Internal APDU Helpers
-    
-    private func buildAPDU(cla: UInt8, ins: UInt8, p1: UInt8, p2: UInt8, data: Data = Data(), le: UInt8? = nil) -> Data {
-        var command = Data([cla, ins, p1, p2])
-        if !data.isEmpty {
-            command.append(UInt8(data.count))
-            command.append(contentsOf: data)
-        } else if let le = le {
-            command.append(le)
-        }
-        if let le = le, !data.isEmpty {
-            command.append(le)
-        }
-        return command
-    }
-    
-    /// Sends an APDU and validates the SW1/SW2 response.
-
-    private func sendAPDU(_ apduData: Data, to tag: NFCISO7816Tag) async throws -> Data {
-        // 1. Convert raw Data into a proper NFCISO7816APDU object.
-        guard let apdu = NFCISO7816APDU(data: apduData) else {
-            throw NFCError.invalidAPDU
-        }
-        // 2. Send the APDU using the strongly-typed object.
-        return try await withCheckedThrowingContinuation { continuation in
-            tag.sendCommand(apdu: apdu) { responseData, sw1, sw2, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
+            
+            // 1. Create the bridge (NSObject) on the main thread
+            Task { @MainActor in
+                let bridge = NFCDelegateBridge()
+                
+                // 2. Set up closures that forward events to the actor
+                bridge.onDidBecomeActive = { [weak self] session in
+                    Task { await self?.handleDidBecomeActive(session: session) }
                 }
-                if sw1 == 0x90 && sw2 == 0x00 {
-                    continuation.resume(returning: responseData)
-                } else {
-                    continuation.resume(throwing: NFCError.apduFailed(sw1: sw1, sw2: sw2))
+                
+                bridge.onDidDetectTags = { [weak self] session, tags in
+                    Task { await self?.handleDidDetect(session: session, tags: tags) }
+                }
+                
+                bridge.onDidInvalidate = { [weak self] session, error in
+                    Task { await self?.handleDidInvalidate(session: session, error: error) }
+                }
+                
+                // 3. Create and start the session
+                let session = NFCTagReaderSession(pollingOption: [.iso14443],
+                                                  delegate: bridge,
+                                                  queue: .main)
+                session?.alertMessage = "Hold your card near the phone to pay."
+                
+                // 4. Store references
+                Task {
+                    await self.setSession(session)
+                    await self.setDelegateBridge(bridge)
+                    session?.begin()
                 }
             }
         }
     }
     
-    // MARK: - Private Actor-Isolated Handlers
+    // MARK: - Private Setters
+    
+    private func setSession(_ session: NFCTagReaderSession?) {
+        self.session = session
+    }
+    
+    private func setDelegateBridge(_ bridge: NFCDelegateBridge?) {
+        self.delegateBridge = bridge
+    }
+    
+    // MARK: - Event Handlers (Actor-Isolated)
     
     private func handleDidBecomeActive(session: NFCTagReaderSession) {
         print("📡 NFC Session Active. Waiting for tap...")
     }
     
     private func handleDidInvalidate(session: NFCTagReaderSession, error: Error) {
-        // Only resume if we haven't already finished successfully.
         guard let continuation = continuation else { return }
         
         if let nfcError = error as? NFCReaderError,
@@ -122,8 +110,11 @@ actor NFCSessionManager: NSObject {
         } else {
             continuation.resume(throwing: error)
         }
+        
+        // Clean up
         self.continuation = nil
         self.session = nil
+        self.delegateBridge = nil
     }
     
     private func handleDidDetect(session: NFCTagReaderSession, tags: [NFCTag]) {
@@ -138,7 +129,7 @@ actor NFCSessionManager: NSObject {
                 if let error = error {
                     session.invalidate(errorMessage: "Connection failed: \(error.localizedDescription)")
                     Task { await self?.continuation?.resume(throwing: error) }
-                    Task { await self?.setContinuation(nil) }
+                    Task { await self?.cleanup() }
                     return
                 }
                 Task { [weak self] in
@@ -147,14 +138,10 @@ actor NFCSessionManager: NSObject {
             }
             
         default:
-            session.invalidate(errorMessage: "Unsupported card type. Please use a contactless credit/debit card.")
+            session.invalidate(errorMessage: "Unsupported card type.")
             continuation?.resume(throwing: NFCError.unsupportedTag)
-            continuation = nil
+            cleanup()
         }
-    }
-    
-    private func setContinuation(_ continuation: CheckedContinuation<EMVCardData, Error>?) {
-        self.continuation = continuation
     }
     
     // MARK: - EMV Processing Pipeline
@@ -270,31 +257,58 @@ actor NFCSessionManager: NSObject {
             session.alertMessage = "✅ Payment read successful!"
             session.invalidate()
             continuation?.resume(returning: cardData)
-            continuation = nil
+            cleanup()
             
         } catch {
             print("❌ EMV Processing Error: \(error)")
             session.invalidate(errorMessage: "Processing failed: \(error.localizedDescription)")
             continuation?.resume(throwing: error)
-            continuation = nil
+            cleanup()
         }
     }
-}
-
-// MARK: - NFCTagReaderSessionDelegate (Nonisolated)
-
-extension NFCSessionManager: NFCTagReaderSessionDelegate {
     
-    nonisolated func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
-        Task { await self.handleDidBecomeActive(session: session) }
+    // MARK: - APDU Helpers
+    
+    private func buildAPDU(cla: UInt8, ins: UInt8, p1: UInt8, p2: UInt8, data: Data = Data(), le: UInt8? = nil) -> Data {
+        var command = Data([cla, ins, p1, p2])
+        if !data.isEmpty {
+            command.append(UInt8(data.count))
+            command.append(contentsOf: data)
+        } else if let le = le {
+            command.append(le)
+        }
+        if let le = le, !data.isEmpty {
+            command.append(le)
+        }
+        return command
     }
     
-    nonisolated func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
-        Task { await self.handleDidInvalidate(session: session, error: error) }
+    private func sendAPDU(_ apduData: Data, to tag: NFCISO7816Tag) async throws -> Data {
+        guard let apdu = NFCISO7816APDU(data: apduData) else {
+            throw NFCError.invalidAPDU
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            tag.sendCommand(apdu: apdu) { responseData, sw1, sw2, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if sw1 == 0x90 && sw2 == 0x00 {
+                    continuation.resume(returning: responseData)
+                } else {
+                    continuation.resume(throwing: NFCError.apduFailed(sw1: sw1, sw2: sw2))
+                }
+            }
+        }
     }
     
-    nonisolated func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
-        Task { await self.handleDidDetect(session: session, tags: tags) }
+    // MARK: - Cleanup
+    
+    private func cleanup() {
+        self.continuation = nil
+        self.session = nil
+        self.delegateBridge = nil
     }
 }
 
@@ -305,5 +319,4 @@ extension Data {
         return map { String(format: "%02X", $0) }.joined()
     }
 }
-
 //This is the main workhorse. APDU sequence required to read a contactless EMV card.
