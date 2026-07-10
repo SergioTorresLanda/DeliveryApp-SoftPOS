@@ -111,7 +111,7 @@ actor SecurityManager {
         }
     }
     
-    private func getValidAccessToken() async throws -> String {
+    func getValidAccessToken() async throws -> String {
         // If we have a token and it hasn't expired, return it.
         if let token = _accessToken,
            let expires = _expiresAt,

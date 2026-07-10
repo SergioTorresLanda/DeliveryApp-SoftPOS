@@ -1,0 +1,8 @@
+framework module "PayCloudTSMSDK" {
+    umbrella header "PayCloudTSMSDK.h"
+
+    export *
+    module * { export * }
+
+    use Foundation
+}

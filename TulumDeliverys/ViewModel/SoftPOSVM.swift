@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import PayCloudTSMSDK
 
 @Observable
 final class SoftPOSVM {
@@ -27,7 +28,6 @@ final class SoftPOSVM {
     
     // MARK: - State Observation
     private var stateObservationTask: Task<Void, Never>?
-       
     
     init(orchestrator: TransactionOrchestrator = TransactionOrchestrator()) {
         self.orchestrator = orchestrator
@@ -79,6 +79,38 @@ final class SoftPOSVM {
         }
     }
     
+    func addCardSDK() {
+       
+        Task {
+            do {
+                let billingAddress = BillingAddress(
+                    line1: "123 Main St",
+                    city: "San Francisco",
+                    state: "CA",
+                    postalCode: "94105",
+                    country: "USA"
+                )
+                
+                let response = try await PayCloudSDK.shared.addCard(
+                    encryptedCardData: "base64_encrypted_blob",
+                    cardholderName: "John Doe",
+                    billingAddress: billingAddress,
+                    pushToken: "apns_token_here" // optional async flow
+                )
+                print("Card added with ID: \(response.cardId)")
+            } catch {
+                print("Error: \(error)")
+            }
+        }
+    }
+    
+    func observeCredentials(){
+        Task {
+            for await credentials in PayCloudSDK.shared.currentCredentials {
+                print("Updated credentials: \(credentials)")
+            }
+        }
+    }
     // MARK: - Full Payment Flow
    func startPaymentFlow() {
        Task {
